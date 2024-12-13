@@ -356,9 +356,7 @@ app.post("/api/users", async (req, res) => {
 
     await newUser.save();
 
-    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
-      expiresIn: "4h",
-    });
+    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, );
 
     res.status(201).json({
       message: "User registered successfully",
@@ -386,9 +384,7 @@ app.post("/api/auth/login", async (req, res) => {
     //   return res.status(400).json({ message: "Invalid email or password" });
     // }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "4h",
-    });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, );
 
     res.json({ token, user: { id: user._id, email: user.email } });
   } catch (error) {
