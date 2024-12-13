@@ -32,6 +32,7 @@
     "peerjs-server": "^0.2.9",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    "stripe": "^17.4.0",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   }

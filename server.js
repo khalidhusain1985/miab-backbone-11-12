@@ -17,8 +17,9 @@ const { log } = require("console");
 const audioSignal = require("./services/audioSignal");
 const videoSignal = require("./services/videoSIgnal");
 const connectDB = require("./db.js");
+const Stripe = require("stripe");
 // const callRoutes = require("./routes/call");
-
+const stripe = Stripe("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");
 const app = express();
 const server = http.createServer(app);
 
@@ -46,6 +47,46 @@ const io = socketIo(server, {
   },
 });
 const userSocketMap = new Map();
+
+app.use(
+  '/api/webhook',
+  express.raw({ type: 'application/json' }) // Use raw body parser for the webhook route
+);
+
+app.post("/api/webhook",express.raw({type: 'application/json'}), async(req, res) => {
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = "whsec_4f4xnUlikGraGTrE8RpHYNp5vFsVzPNV"; // Replace with your Stripe webhook secret
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      console.log("Webhook verified successfully!", event.type);
+    } catch (err) {
+      console.error(`Webhook verification failed: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle successful payment event
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      console.log("Checkout session completed:", session);
+
+      // Example: Retrieve the customer email or identifier from the session
+      const customerEmail = session.customer_email;
+      console.log(`Customer email: ${customerEmail}`);
+
+          if (User) {
+      User.isPremium = true;
+      await User.save();
+      console.log(`User ${User.email} upgraded to premium.`);
+    }
+  }
+
+      // Handle post-payment actions here
+      // Example: Update user to premium or store payment details in the database
+
+    res.json({ received: true });
+  }
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -90,6 +131,113 @@ const generateResetToken = () => {
   }
   return token;
 };
+
+
+app.post("/api/create-checkout-session", async (req, res) => {
+  const { email, amount } = req.body;
+
+  try {
+    // const session = await stripe.checkout.sessions.create({
+    //   payment_method_types: ["card"],
+    //   customer_email: email,
+    //   line_items: [{
+    //     price_data: {
+    //       currency: "usd",
+    //       product_data: {
+    //         name: "Premium Membership",
+    //       },
+    //       unit_amount: 999, // $9.99 in cents
+    //     },
+    //     quantity: 1,
+    //   }],
+    //   mode: "payment",
+    //   success_url: "https://your-frontend-url.com/success",
+    //   cancel_url: "https://your-frontend-url.com/cancel",
+    // });
+
+    const paymentIntent = await stripe.paymentIntents?.create({
+      amount: amount * 100,
+      currency: "USD",
+      receipt_email: email
+    })
+
+    console.log(paymentIntent);
+
+    // res.json({ url: session.url });
+
+    res.status(200).send({clientSecret: paymentIntent?.client_secret});
+  } catch (error) {
+    res.status(500).json({ message: `Error creating checkout session: ${error.message}` });
+  }
+});
+
+// app.post("/api/webhook", bodyParser.raw({ type: "application/json" }), async (req, res) => {
+//   const sig = req.headers["stripe-signature"];
+//   const payload = req.body;
+//   //console.log("Raw body:", req.body.toString());
+//   //const rawPayload = req.body.toString("utf8");
+//   //console.log(req.body.toString("utf8"));
+
+//   const webhookSecret = "wwhsec_4f4xnUlikGraGTrE8RpHYNp5vFsVzPNV"; // Replace with your Stripe webhook secret
+//   let event;
+//   // console.log('working');
+//   try {
+//     event = stripe.webhooks.constructEvent(payload, sig, webhookSecret);
+//     console.log("Webhook verified successfully!", event.type);
+
+//   } catch (err) {
+//     console.error(`Webhook verification failed: ${err.message}`);
+//     return res.status(400).send(`Webhook Error: ${err.message}`);
+//   }
+
+//   // Handle successful payment event
+//   if (event.type === "checkout.session.completed") {
+//     const session = event.data.object;
+//     console.log("logic check", session);
+
+//     // Here, you could find the user by their email or another identifier
+//     // const user = await User.findOne({ email: session.customer_email });
+
+//     // if (user) {
+//     //   user.isPremium = true;
+//     //   await user.save();
+//     //   console.log(`User ${user.email} upgraded to premium.`);
+//     // }
+//   }
+
+//   res.json({ received: true });
+// });
+
+// Middleware to Check Premium Access
+const premiumMiddleware = async (req, res, next) => {
+  const { userId } = req.body;
+  const user = await User.findById(userId);
+
+  if (!user || !user.isPremium) {
+    return res.status(403).json({ message: "Access denied. Premium required." });
+  }
+
+  next();
+};
+
+app.put("/api/user/premium", async (req, res) => {
+  const {email} = req.body;
+
+  try {
+    const user = await User.findOne({email});
+  
+    user.isPremium = true;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "User is now pemium",
+      isPremium: user.isPremium,
+    })
+  } catch (error) {
+    
+  }
+});
 
 app.get("/api/users/me", async (req, res) => {
   try {
